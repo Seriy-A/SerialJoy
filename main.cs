@@ -134,7 +134,7 @@ namespace SerialJoy
 		private void Serial_ErrorReceived(object sender, System.IO.Ports.SerialErrorReceivedEventArgs e) => serialError(e);
 
 		void serialError(object eventargs) {
-			setStat(stat.SerialDeviceAttached | stat.SerialDataFlow,0);
+			setStat(stat.SerialDeviceAttached | stat.SerialDataFlow | stat.SerialDataFlowProblem,0);
 			
 			serial.Close();
 			refreshStatusIcons(stat.SerialOK); checkComPorts();
@@ -187,7 +187,7 @@ namespace SerialJoy
 		#endregion
 
 		private void BridgeGuard_Tick(object sender, EventArgs e) {
-			if (DateTime.Now.Subtract(serialDataTime).Seconds > 10) {
+			if (DateTime.Now.Subtract(serialDataTime).TotalSeconds > 10) {
 				setStat(stat.SerialDataFlow, 0);
 				if (serial.IsOpen) {
 					setStat(stat.SerialDataFlowProblem);
