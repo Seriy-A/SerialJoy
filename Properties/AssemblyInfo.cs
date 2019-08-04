@@ -8,9 +8,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("SerialJoy")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
+[assembly: AssemblyCompany("Seriy_A")]
 [assembly: AssemblyProduct("SerialJoy")]
-[assembly: AssemblyCopyright("Copyright © Microsoft 2019")]
+[assembly: AssemblyCopyright("Seriy_A")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

@@ -115,6 +115,7 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
+    <None Include="readme.md" />
     <None Include="Resources\warn.png" />
   </ItemGroup>
   <ItemGroup>
