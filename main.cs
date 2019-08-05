@@ -30,8 +30,17 @@ namespace SerialJoy
 			VJOK = 0xF0,
 			BridgeOK = 0xFF,
 			SerialDataFlowProblem = 0x800,
-			VJLibVerProblem = 0x2000
+			VJLibVerProblem = 0x2000,
+			BridgeWorking = 0x10000
 		}
+
+		enum maplistsub { Using, Available, Channel, Min, Max, Direction, In, Out }
+
+		//int getMLData(int index, maplistsub param) { return 0; }
+		void setMLData(int index, maplistsub param, object data) => maplist.Items[index].SubItems[(int)param].Text = data.ToString();
+		void setMLData(string key, maplistsub param, object data) => setMLData(maplist.Items.IndexOfKey(key), param, data);
+		//i dont know why this dont fill all fields sometimes
+		//void setMLDataAsync(int index, maplistsub param, string data) => BeginInvoke((MethodInvoker)(() => maplist.Items[index].SubItems[(int)param].Text = data));
 
 		stat status = 0;
 		DateTime serialDataTime = DateTime.MinValue;
@@ -58,6 +67,20 @@ namespace SerialJoy
 				imgStatvJoyDev.Image = checkStat(stat.VJDevReady) ? Properties.Resources.ok : Properties.Resources.err;
 			if ((icon & stat.VJDevAttached) == stat.VJDevAttached)
 				imgStatvJoyAttached.Image = checkStat(stat.VJDevAttached) ? Properties.Resources.ok : Properties.Resources.err;
+
+			byte minist = 0; //ministatus to ez resolve bridge state
+
+			if (checkStat(stat.SerialOK) || checkStat(stat.SerialOK & ~stat.SerialDataFlow)) minist |= 1;
+			if (checkStat(stat.VJOK)) minist |= 2;
+			if (checkStat(stat.BridgeWorking)) minist |= 4;
+
+			switch (minist) {
+				case 1:  bridgeText.Text = "Joy side of bridge not ready"; break;
+				case 2:  bridgeText.Text = "Serial side of bridge not ready"; break;
+				case 3:  bridgeText.Text = "Bridge ready"; break;
+				case 4:  bridgeText.Text = "Bridge works"; break;
+				default:  bridgeText.Text = "Bridge not ready"; break;
+			}
 		}
 
 		void refreshStatusIcons() => refreshStatusIcons(stat.BridgeOK); //equal to refresh all
@@ -75,8 +98,8 @@ namespace SerialJoy
 		}
 
 		void checkSerialParams()	{
-			int dummy=0;
-			if ((portSelector.Text.Length != 0) & (portRateSelector.Text.Length != 0) & int.TryParse(portRateSelector.Text, out dummy)) setStat(stat.SerialPortConfigured); else setStat(stat.SerialPortConfigured, 0);//status |= stat.SerialPortConfigured; else status &= ~stat.SerialPortConfigured;
+			if ((portSelector.Text.Length != 0) & (portRateSelector.Text.Length != 0) & int.TryParse(portRateSelector.Text, out _)) setStat(stat.SerialPortConfigured); else setStat(stat.SerialPortConfigured, 0);//status |= stat.SerialPortConfigured; else status &= ~stat.SerialPortConfigured;
+			btnSerialSwitch.Enabled = checkStat(stat.SerialPortConfigured) ? true : false;
 			refreshStatusIcons(stat.SerialPortsExist | stat.SerialPortConfigured);
 			//imgStatPortsParamOk.Image = (portSelector.Text.Length != 0) & (portRateSelector.Text.Length != 0) ? Properties.Resources.ok : Properties.Resources.err;
 		}
@@ -169,20 +192,83 @@ namespace SerialJoy
 		}
 
 		void checkvJoyDevice() {
-			joystat = joy.GetVJDStatus((uint)joyIDSelector.Value);
+			uint vjid = (uint)joyIDSelector.Value;
+			joystat = joy.GetVJDStatus(vjid);
 			switch (joystat) {
 				case VjdStat.VJD_STAT_FREE: setStat(stat.VJDevReady); tooltiper.SetToolTip(imgStatvJoyDev, "Selected vJoy ready to be used"); break;
 				case VjdStat.VJD_STAT_OWN: setStat(stat.VJDevReady); tooltiper.SetToolTip(imgStatvJoyDev, "Selected vJoy attached"); break;
 				case VjdStat.VJD_STAT_BUSY: setStat(stat.VJDevReady, 0); tooltiper.SetToolTip(imgStatvJoyDev, "Selected vJoy attached to other feeder ("+ System.Diagnostics.Process.GetProcessById(joy.GetOwnerPid((uint)joyIDSelector.Value)).ProcessName + ", process ID: "+ joy.GetOwnerPid((uint)joyIDSelector.Value) + ")"); break;
 				case VjdStat.VJD_STAT_MISS: setStat(stat.VJDevReady, 0); tooltiper.SetToolTip(imgStatvJoyDev, "Selected vJoy doesn't exist"); break;
 				default: setStat(stat.VJDevReady, 0); tooltiper.SetToolTip(imgStatvJoyDev, "vJoy general error"); break;
+			}			
+			btnJoyAttach.Enabled = checkStat(stat.VJDevReady) ? true : false;
+			//Thread thread = new Thread(new ThreadStart(checkvJoyDeviceInputs));
+			//thread.Start();
+
+			//uncomment this and delete next if vjoy change its max
+			/*for (int i = 0; i < 8; i++) { //8 axis
+				if (joy.GetVJDAxisExist(vjid, (HID_USAGES)((int)HID_USAGES.HID_USAGE_X + i))) { //HID_USAGE_X is 1st
+					setMLData(i, maplistsub.Available, "Yes");
+					setMLData(i, maplistsub.Min, 0);
+					setMLData(i, maplistsub.Max, 32767); //remove const from here, use joy.GetVJDAxisMax()
+				} else {
+					setMLData(i, maplistsub.Available, "No");
+					setMLData(i, maplistsub.Min, "Unknown");
+					setMLData(i, maplistsub.Max, "Unknown");
+				}
+			}*/
+			setMLData("mlAX", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_X) ? "Yes" : "No");
+			setMLData("mlAY", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_Y) ? "Yes" : "No");
+			setMLData("mlAZ", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_Z) ? "Yes" : "No");
+			setMLData("mlARX", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RX) ? "Yes" : "No");
+			setMLData("mlARY", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RY) ? "Yes" : "No");
+			setMLData("mlARZ", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RZ) ? "Yes" : "No");
+			setMLData("mlAS0", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_SL0) ? "Yes" : "No");
+			setMLData("mlAS1", maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_SL1) ? "Yes" : "No");
+
+			int povn = joy.GetVJDContPovNumber(vjid); bool povd = false;
+			if (povn < 1) { povn = joy.GetVJDDiscPovNumber(vjid); povd = true; }
+			for (int i = 0; i < 4; i++) {
+				setMLData("mlP" + (i + 1), maplistsub.Available, povn >= (i + 1) ? "Yes" : "No");
+				setMLData("mlP" + (i + 1), maplistsub.Direction, povn >= (i + 1) ? povd ? "4-way" : "Continuous" : "Unknown");
+				setMLData("mlP" + (i + 1), maplistsub.Max, povn >= (i + 1) ? povd ? "3" : "35999" : "Unknown");
 			}
+
+			int butn = joy.GetVJDButtonNumber(vjid);
+			for (int i = 1; i < 33; i++) setMLData("mlB" + i, maplistsub.Available, butn >= i ? "Yes" : "No");
 			refreshStatusIcons(stat.VJDevReady);
 		}
-		private void BtnJoyAttach_Click(object sender, EventArgs e)
-		{
-			//joy.AcquireVJD(1);
+
+		/*void checkvJoyDeviceInputs() {
+			uint vjid = (uint)joyIDSelector.Value;
+			
+			setMLDataAsync(0, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_X) ? "Yes" : "No");
+			setMLDataAsync(1, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_Y) ? "Yes" : "No");
+			setMLDataAsync(2, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_Z) ? "Yes" : "No");
+			setMLDataAsync(3, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RX) ? "Yes" : "No");
+			setMLDataAsync(4, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RY) ? "Yes" : "No");
+			setMLDataAsync(5, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_RZ) ? "Yes" : "No");
+			setMLDataAsync(6, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_SL0) ? "Yes" : "No");
+			setMLDataAsync(7, maplistsub.Available, joy.GetVJDAxisExist(vjid, HID_USAGES.HID_USAGE_SL1) ? "Yes" : "No");
+		}*/
+
+		void vJoyToggle() {
+			if (checkStat(stat.VJDevReady) & !checkStat(stat.VJDevAttached)) {
+				if (joy.AcquireVJD((uint)joyIDSelector.Value))
+				{
+					setStat(stat.VJDevAttached);
+					joyIDSelector.Enabled = false;
+					btnJoyAttach.Text = "Detach";
+				}
+			} else {
+				joy.RelinquishVJD((uint)joyIDSelector.Value);
+				setStat(stat.VJDevAttached, 0);
+				joyIDSelector.Enabled = true;
+				btnJoyAttach.Text = "Attach";
+			}
+			refreshStatusIcons(stat.VJOK);
 		}
+
 		private void joyIDupdate(object sender, EventArgs e) => checkvJoyDevice();
 		#endregion
 
@@ -203,6 +289,7 @@ namespace SerialJoy
 
 		private void Main_Load(object sender, EventArgs e)
 		{
+			generateMapTemplate();
 			checkComPorts();
 			if (checkStat(stat.SerialPortsExist)) portSelector.SelectedIndex = 0;
 			checkvJoy();
@@ -227,10 +314,140 @@ namespace SerialJoy
 			System.Diagnostics.Debug.Print("x axis min == "+minax+", max == "+maxax);
 		}
 
+		void generateMapTemplate() {
+			/*fill map list
+			1st axis index 0 / X Y Z RX RY RZ S0 S1
+			1st pov index 8 / 1 2 3 4
+			1st button index 12
+			wheel axis not included bcs not implemented (?) in vjoy*/
+
+			ListView.ListViewItemCollection premaplist = new ListView.ListViewItemCollection(maplist);
+			ListViewItem item = new ListViewItem();
+			
+			void fillsubs(int group) {
+				item.Group = maplist.Groups[group];  //group 0==axis, 1==pov, 2==button
+				item.SubItems.Add("Unknown"); //available
+				item.SubItems.Add("None"); //channel
+				switch (group) { //minimum
+					case 1: item.SubItems.Add("-1"); break;
+					default: item.SubItems.Add("0"); break;
+				}
+				switch (group) { //maximum
+					case 0: item.SubItems.Add("32767"); break;
+					case 1: item.SubItems.Add("Unknown"); break;
+					case 2: item.SubItems.Add("1"); break;
+				}
+				switch (group) { //direction
+					case 0: item.SubItems.Add("Forward"); break;
+					case 1: item.SubItems.Add("Unknown"); break;
+					case 2: item.SubItems.Add("Button"); break;
+				}				
+				item.SubItems.Add("None"); //in
+				item.SubItems.Add("None"); //out
+			}
+
+			#region add axis
+			item.Name = "mlAX";
+			item.Text = "Axis X";
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlAY",
+				Text = "Axis Y"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlAZ",
+				Text = "Axis Z"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlARX",
+				Text = "Axis RX"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlARY",
+				Text = "Axis RY"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlARZ",
+				Text = "Axis RZ"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlAS0",
+				Text = "Slider 0"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlAS1",
+				Text = "Slider 1"
+			};
+			fillsubs(0);
+			premaplist.Add(item);
+			#endregion
+
+			#region add pov
+			item = new ListViewItem {
+				Name = "mlP1",
+				Text = "POV Hat 1"
+			};
+			fillsubs(1);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlP2",
+				Text = "POV Hat 2"
+			};
+			fillsubs(1);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlP3",
+				Text = "POV Hat 3"
+			};
+			fillsubs(1);
+			premaplist.Add(item);
+
+			item = new ListViewItem {
+				Name = "mlP4",
+				Text = "POV Hat 4"
+			};
+			fillsubs(1);
+			premaplist.Add(item);
+			#endregion
+
+			//add buttons
+			for (byte i = 1; i < 33; i++) { // wtf? GetVJDButtonNumber() returns from -? to 128 but SetBtn() accepts only from 1 to 32! 
+				item = new ListViewItem {
+					Name = "mlB" + i,
+					Text = "Button " + i
+				};
+			fillsubs(2);
+			premaplist.Add(item);
+			}
+		}
+
 		private void BtnSerialPortsRescan_Click(object sender, EventArgs e) => checkComPorts();
 		private void PortSelector_SelectedIndexChanged(object sender, EventArgs e) => getSerialDeviceInfo();
 		private void PortRateSelector_ValueChanged(object sender, EventArgs e) => checkSerialParams();
 		private void BtnSerialSwitch_Click(object sender, EventArgs e) => serialToggle();
+		private void BtnJoyAttach_Click(object sender, EventArgs e) => vJoyToggle();//joy.AcquireVJD(1);
 		#endregion
 
 	}
